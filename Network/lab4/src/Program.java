@@ -1,7 +1,11 @@
+import org.omg.CORBA.portable.UnknownException;
+
 import java.io.IOException;
-import java.net.InetSocketAddress;
+import java.net.*;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.Iterator;
+import java.util.Map;
 
 /**
  * Created by Татьяна on 27.10.2016.
@@ -11,37 +15,118 @@ public class Program
     private String name;
     private int losses;
     private int port;
-    private String parentIP;
-    private int parentPort;
     private boolean isRoot;
+    private SocketAddress parentAddress;
     private SocketChannel parentSocketChannel;
+    private static final String MESSAGE = "hello";
 
 
-    public void run()
+    // i'm your son
+    // my end
+    // content message
+    // submit msg
+    // this is your new father
+    //
+
+    public void run() throws UnknownHostException
     {
-        InetSocketAddress address = new InetSocketAddress(parentIP, parentPort);
-        try
+        if(parentAddress != null)
         {
-            parentSocketChannel = SocketChannel.open(address);
-            ServerSocketChannel server = n;
-        }
-        catch (IOException e)
-        {
-            e.printStackTrace();
+            sendMessageImYourSon(parentAddress);
         }
 
+        while(true)
+        {
+            // проверка ввода пользователя
+            // если написал, то кладем это в очередь писем для детей и родителей со временем последней отправкой = 0
+            // проверяем очередь писем для родителей и детей, если время с момента прошлой отправкой больше чем 10 секунду, повторяем
+            // инкрементируем к-во отправок письма
+            // если у какого-то письма к-во отправок > 10, то его удаляем из очереди
+            // проверка входящих
+            // решаем потеряли ли мы это сообщение или нет
+            // если не потеряли
+            // читаем номер пакета
+            // шлём подтверждение доставки пакета
+            // смотрим что за вид сообщения
+            // востанавливаем класс сообщения десериализатором
+            // делаем что-то в соответствии с видом сообщения
+            // например, если это письмо-подтверждение, то мы смотрим номер какого пакета оно подтверждает и удаляем его из очереди писем конкретной программы
+            // если потеряли, то начинаем сначала
+        }
+        DatagramPacket helloPacket = new DatagramPacket(MESSAGE.getBytes(), MESSAGE.length(), broadcastIp, PORT);
+        DatagramPacket recievedPacket = new DatagramPacket(buf, buf.length);
+        DatagramSocket socket = new DatagramSocket(PORT);
+        socket.setSoTimeout(TIMEOUT);
+
+        long lastTime = System.currentTimeMillis();
+        while (true)
+        {
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - lastTime >= TIMEOUT)
+            {
+                socket.send(helloPacket);
+                lastTime = currentTime;
+            }
+            try
+            {
+                socket.receive(recievedPacket);
+                currentTime = System.currentTimeMillis();
+                if (programsOnNet.put(recievedPacket.getAddress(), currentTime) == null)
+                {
+                    ++programsCount;
+                    programSetChanged = true;
+                }
+            }
+            catch (SocketTimeoutException e)
+            {
+                currentTime = System.currentTimeMillis();
+            }
+
+            Iterator<Map.Entry<InetAddress, Long>> it = programsOnNet.entrySet().iterator();
+            while (it.hasNext())
+            {
+                Map.Entry<InetAddress, Long> entry = it.next();
+                if (currentTime - entry.getValue() > TIMEOUT * 2)
+                {
+                    it.remove();
+                    --programsCount;
+                    programSetChanged = true;
+                }
+            }
+
+            if (programSetChanged)
+            {
+                System.out.println("We found " + programsCount + " program(s) on the net with following ip address(es):");
+                for (InetAddress keyVal : programsOnNet.keySet())
+                {
+                    System.out.println(keyVal.toString());
+                }
+                programSetChanged = false;
+            }
+        }
     }
 
-    public static void main(String[] args)
+    catch(
+    IOException e
+    )
+
+    {
+        System.out.println("Some error occurred.");
+    }
+
+}
+
+    public static void main(String[] args) throws UnknownHostException
     {
         Program program = new Program();
         program.name = args[0];
         program.losses = Integer.parseInt(args[1]);
         program.port = Integer.parseInt(args[2]);
-        if(args.length == 5)
+        if (args.length == 5)
         {
-            program.parentIP = args[3];
-            program.parentPort = Integer.parseInt(args[4]);
+            String parentIP = args[3];
+            int parentPort = Integer.parseInt(args[4]);
+            program.parentAddress = new InetSocketAddress(parentIP, parentPort);
         }
         else
         {
