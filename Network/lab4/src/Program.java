@@ -11,16 +11,20 @@ import java.util.*;
  */
 public class Program
 {
-    public int MAX_MESSAGES_NUMBER = 1000;
+    public final int MAX_MESSAGES_NUMBER = 1000;
+    public final int TIMEOUT = 1000;
+    private DatagramPacket packet = new DatagramPacket(buf, buf.length);
     private String name;
-    private int losses;
+    private int lossPersentage;
     private int port;
+    private DatagramSocket socket;
     private boolean isRoot;
     private SocketAddress parentAddress;
     private SocketChannel parentSocketChannel;
     private static final String MESSAGE = "hello";
     private Scanner scanner = new Scanner(System.in);
     private Map<SocketAddress, Vector<Pair<Message, Long>>> messagesLists = new HashMap<>();
+    private Random randomGenerator = new Random();
 
 
     // i'm your son
@@ -30,12 +34,16 @@ public class Program
     // this is your new father
     //
 
-    public void run() throws UnknownHostException
+    public void run() throws UnknownHostException, IOException
     {
+        socket = new DatagramSocket(port);
+        socket.setSoTimeout(TIMEOUT);
+
         if (parentAddress != null)
         {
             sendMessageImYourSon(parentAddress);
         }
+
 
         while (true)
         {
@@ -57,87 +65,38 @@ public class Program
             {
                 for (Pair<Message, Long> data : messagesList)
                 {
-                    if(data.second - System.currentTimeMillis() > 5)
+                    Message message = data.first;
+                    Long lastSendTime = data.second;
+                    if(lastSendTime - System.currentTimeMillis() > 5)
                     {
-                        //переотправить
+                        message.beSentBy(socket);
                     }
                 }
             }
 
-
-            // проверка ввода пользователя
-            // если написал, проверяем размеры очередей детей/родитей, если необходимо удаляем там самое древнее письмо
-            // если написал, то кладем это в очередь писем для детей и родителей со временем последней отправкой = 0
-            // проверяем очередь писем для родителей и детей, если время с момента прошлой отправкой больше чем 10 секунду, повторяем
-            // проверка входящих
-            // решаем потеряли ли мы это сообщение или нет
-            // если не потеряли
-            // читаем номер пакета
-            // шлём подтверждение доставки пакета
-            // смотрим что за вид сообщения
-            // востанавливаем класс сообщения десериализатором
-            // делаем что-то в соответствии с видом сообщения
-            // например, если это письмо-подтверждение, то мы смотрим номер какого пакета оно подтверждает и удаляем его из очереди писем конкретной программы
-            // если потеряли, то начинаем сначала
-        }
-        DatagramPacket helloPacket = new DatagramPacket(MESSAGE.getBytes(), MESSAGE.length(), broadcastIp, PORT);
-        DatagramPacket recievedPacket = new DatagramPacket(buf, buf.length);
-        DatagramSocket socket = new DatagramSocket(PORT);
-        socket.setSoTimeout(TIMEOUT);
-
-        long lastTime = System.currentTimeMillis();
-        while (true)
-        {
-            long currentTime = System.currentTimeMillis();
-            if (currentTime - lastTime >= TIMEOUT)
-            {
-                socket.send(helloPacket);
-                lastTime = currentTime;
-            }
             try
             {
-                socket.receive(recievedPacket);
-                currentTime = System.currentTimeMillis();
-                if (programsOnNet.put(recievedPacket.getAddress(), currentTime) == null)
-                {
-                    ++programsCount;
-                    programSetChanged = true;
-                }
-            }
-            catch (SocketTimeoutException e)
-            {
-                currentTime = System.currentTimeMillis();
-            }
+                socket.receive(packet);
 
-            Iterator<Map.Entry<InetAddress, Long>> it = programsOnNet.entrySet().iterator();
-            while (it.hasNext())
-            {
-                Map.Entry<InetAddress, Long> entry = it.next();
-                if (currentTime - entry.getValue() > TIMEOUT * 2)
+                if(randomGenerator.nextInt(100) >= lossPersentage)
                 {
-                    it.remove();
-                    --programsCount;
-                    programSetChanged = true;
+                    // читаем номер пакета
+                    // шлём подтверждение доставки пакета
+                    // смотрим что за вид сообщения
+                    // востанавливаем класс сообщения десериализатором
+                    // делаем что-то в соответствии с видом сообщения
+                    // например, если это письмо-подтверждение, то мы смотрим номер какого пакета оно подтверждает и удаляем его из очереди писем конкретной программы
                 }
             }
-
-            if (programSetChanged)
-            {
-                System.out.println("We found " + programsCount + " program(s) on the net with following ip address(es):");
-                for (InetAddress keyVal : programsOnNet.keySet())
-                {
-                    System.out.println(keyVal.toString());
-                }
-                programSetChanged = false;
-            }
+            catch (SocketTimeoutException e){}
         }
     }
 
-    public static void main(String[] args) throws UnknownHostException
+    public static void main(String[] args) throws UnknownHostException, IOException
     {
         Program program = new Program();
         program.name = args[0];
-        program.losses = Integer.parseInt(args[1]);
+        program.lossPersentage = Integer.parseInt(args[1]);
         program.port = Integer.parseInt(args[2]);
         if (args.length == 5)
         {
