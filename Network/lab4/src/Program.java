@@ -2,6 +2,7 @@ import org.omg.CORBA.portable.UnknownException;
 
 import java.io.IOException;
 import java.net.*;
+import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.*;
@@ -80,9 +81,16 @@ public class Program
 
                 if(randomGenerator.nextInt(100) >= lossPersentage)
                 {
-                    // читаем номер пакета
-                    // шлём подтверждение доставки пакета
-                    // смотрим что за вид сообщения
+                    ByteBuffer buffer = ByteBuffer.wrap(packet.getData());
+                    Long halfGuid1 = buffer.getLong();
+                    Long halfGuid2 = buffer.getLong();
+
+                    // сериализируем 2 long to type guid
+
+                    Message message = new ConfirmMessage(guid);
+                    message.beSentBy(socket);
+
+                    int messageID = buffer.getInt();
                     // востанавливаем класс сообщения десериализатором
                     // делаем что-то в соответствии с видом сообщения
                     // например, если это письмо-подтверждение, то мы смотрим номер какого пакета оно подтверждает и удаляем его из очереди писем конкретной программы
