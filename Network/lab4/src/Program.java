@@ -4,14 +4,14 @@ import java.io.IOException;
 import java.net.*;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Created by Татьяна on 27.10.2016.
  */
 public class Program
 {
+    public int MAX_MESSAGES_NUMBER = 1000;
     private String name;
     private int losses;
     private int port;
@@ -19,6 +19,8 @@ public class Program
     private SocketAddress parentAddress;
     private SocketChannel parentSocketChannel;
     private static final String MESSAGE = "hello";
+    private Scanner scanner = new Scanner(System.in);
+    private Map<SocketAddress, Vector<Pair<Message, Long>>> messagesLists = new HashMap<>();
 
 
     // i'm your son
@@ -30,13 +32,39 @@ public class Program
 
     public void run() throws UnknownHostException
     {
-        if(parentAddress != null)
+        if (parentAddress != null)
         {
             sendMessageImYourSon(parentAddress);
         }
 
-        while(true)
+        while (true)
         {
+            if (scanner.hasNext())
+            {
+                String userMessage = scanner.next();
+                Message message = new ContentMessage(userMessage);
+                for(Vector<Pair<Message, Long>> messagesList  : messagesLists.values())
+                {
+                    if(messagesList.size() == MAX_MESSAGES_NUMBER)
+                    {
+                        messagesList.removeElementAt(0);
+                    }
+                    messagesList.add(new Pair<>(message, 0L));
+                }
+            }
+
+            for(Vector<Pair<Message, Long>> messagesList  : messagesLists.values())
+            {
+                for (Pair<Message, Long> data : messagesList)
+                {
+                    if(data.second - System.currentTimeMillis() > 5)
+                    {
+                        //переотправить
+                    }
+                }
+            }
+
+
             // проверка ввода пользователя
             // если написал, проверяем размеры очередей детей/родитей, если необходимо удаляем там самое древнее письмо
             // если написал, то кладем это в очередь писем для детей и родителей со временем последней отправкой = 0
@@ -105,16 +133,6 @@ public class Program
         }
     }
 
-    catch(
-    IOException e
-    )
-
-    {
-        System.out.println("Some error occurred.");
-    }
-
-}
-
     public static void main(String[] args) throws UnknownHostException
     {
         Program program = new Program();
@@ -133,4 +151,17 @@ public class Program
         }
         program.run();
     }
+
+    private class Pair<F, S>
+    {
+        public F first;
+        public S second;
+
+        public Pair(F first, S second)
+        {
+            this.first = first;
+            this.second = second;
+        }
+    }
 }
+
