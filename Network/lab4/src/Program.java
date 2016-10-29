@@ -94,18 +94,14 @@ public class Program
             try
             {
                 socket.receive(packet);
-
                 if (randomGenerator.nextInt(100) >= lossPersentage)
                 {
                     ByteBuffer buffer = ByteBuffer.wrap(packet.getData());
-                    Long halfGuid1 = buffer.getLong();
-                    Long halfGuid2 = buffer.getLong();
-
-                    // сериализируем 2 long to type guid
-
-                    Message message = new ConfirmMessage(guid);
+                    Long halfUuid1 = buffer.getLong();
+                    Long halfUuid2 = buffer.getLong();
+                    UUID uuid = new UUID(halfUuid1, halfUuid2);
+                    Message message = new ConfirmMessage(uuid);
                     message.beSentBy(socket);
-
                     int messageID = buffer.getInt();
                     message = deserializeMessage(buffer);
                     message.beProcessed();
