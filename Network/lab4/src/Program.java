@@ -67,6 +67,10 @@ public class Program
             if (scanner.hasNext())
             {
                 String userMessage = scanner.next();
+                if(userMessage == "exit")
+                {
+
+                }
                 Message message = new ContentMessage(userMessage);
                 for (Vector<Pair<Message, Long>> messagesList : messagesLists.values())
                 {
@@ -78,33 +82,30 @@ public class Program
                 }
             }
 
-            for (Vector<Pair<Message, Long>> messagesList : messagesLists.values())
+            for (Map.Entry<SocketAddress, Vector<Pair<Message, Long>>>  entry : messagesLists.entrySet())
             {
+                SocketAddress socketAddress = entry.getKey();
+                Vector<Pair<Message, Long>> messagesList = entry.getValue();
                 for (Pair<Message, Long> data : messagesList)
                 {
                     Message message = data.first;
                     Long lastSendTime = data.second;
                     if (lastSendTime - System.currentTimeMillis() > 5)
                     {
-                        message.beSentBy(socket);
+                        message.beSentTo(socketAddress);
                     }
                 }
             }
-
             try
             {
                 socket.receive(packet);
                 if (randomGenerator.nextInt(100) >= lossPersentage)
                 {
                     ByteBuffer buffer = ByteBuffer.wrap(packet.getData());
-                    Long halfUuid1 = buffer.getLong();
-                    Long halfUuid2 = buffer.getLong();
-                    UUID uuid = new UUID(halfUuid1, halfUuid2);
-                    Message message = new ConfirmMessage(uuid);
-                    message.beSentBy(socket);
-                    int messageID = buffer.getInt();
-                    message = deserializeMessage(buffer);
+                    Message message = deserializeMessage(buffer);
                     message.beProcessed();
+                    message = new ConfirmMessage(message.getUUID());
+                    message.beSentTo(packet.getSocketAddress());
                 }
             }
             catch (SocketTimeoutException e) {}
