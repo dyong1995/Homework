@@ -1,6 +1,6 @@
 import org.omg.CORBA.portable.UnknownException;
 
-import java.io.IOException;
+import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
@@ -35,6 +35,22 @@ public class Program
     // this is your new father
     //
 
+    Message deserializeMessage(ByteBuffer buffer)
+    {
+        try
+        {
+            ByteArrayInputStream inputStream = new ByteArrayInputStream(buffer.array(), buffer.position(), buffer.limit());
+            ObjectInputStream objectInputStream = new ObjectInputStream(inputStream);
+            return (Message) objectInputStream.readObject();
+        }
+        catch (IOException | ClassNotFoundException e)
+        {
+            System.err.println("Can't deserialize a message");
+            System.exit(1);
+            return null;
+        }
+    }
+
     public void run() throws UnknownHostException, IOException
     {
         socket = new DatagramSocket(port);
@@ -52,9 +68,9 @@ public class Program
             {
                 String userMessage = scanner.next();
                 Message message = new ContentMessage(userMessage);
-                for(Vector<Pair<Message, Long>> messagesList  : messagesLists.values())
+                for (Vector<Pair<Message, Long>> messagesList : messagesLists.values())
                 {
-                    if(messagesList.size() == MAX_MESSAGES_NUMBER)
+                    if (messagesList.size() == MAX_MESSAGES_NUMBER)
                     {
                         messagesList.removeElementAt(0);
                     }
@@ -62,13 +78,13 @@ public class Program
                 }
             }
 
-            for(Vector<Pair<Message, Long>> messagesList  : messagesLists.values())
+            for (Vector<Pair<Message, Long>> messagesList : messagesLists.values())
             {
                 for (Pair<Message, Long> data : messagesList)
                 {
                     Message message = data.first;
                     Long lastSendTime = data.second;
-                    if(lastSendTime - System.currentTimeMillis() > 5)
+                    if (lastSendTime - System.currentTimeMillis() > 5)
                     {
                         message.beSentBy(socket);
                     }
@@ -79,7 +95,7 @@ public class Program
             {
                 socket.receive(packet);
 
-                if(randomGenerator.nextInt(100) >= lossPersentage)
+                if (randomGenerator.nextInt(100) >= lossPersentage)
                 {
                     ByteBuffer buffer = ByteBuffer.wrap(packet.getData());
                     Long halfGuid1 = buffer.getLong();
@@ -91,12 +107,11 @@ public class Program
                     message.beSentBy(socket);
 
                     int messageID = buffer.getInt();
-                    // востанавливаем класс сообщения десериализатором
-                    // делаем что-то в соответствии с видом сообщения
-                    // например, если это письмо-подтверждение, то мы смотрим номер какого пакета оно подтверждает и удаляем его из очереди писем конкретной программы
+                    message = deserializeMessage(buffer);
+                    message.beProcessed();
                 }
             }
-            catch (SocketTimeoutException e){}
+            catch (SocketTimeoutException e) {}
         }
     }
 
