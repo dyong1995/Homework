@@ -1,38 +1,58 @@
-import org.omg.CORBA.portable.UnknownException;
-
 import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
 import java.util.*;
 
-/**
- * Created by Татьяна on 27.10.2016.
- */
-public class Program
+
+public class Program implements Serializable
 {
+    class MessageList  implements Serializable
+    {
+        private LinkedList<Pair<Message, Long>> messagesList = new LinkedList<>();
+        private Map<UUID, Integer> association = new HashMap<>();
+
+        public void removeEldestOne()
+        {
+            Pair<Message, Long> eldestEntry = messagesList.poll();
+            association.remove(eldestEntry.first.getUUID());
+        }
+        public void removeMessageWithUUID(UUID uuid)
+        {
+            int idx = association.get(uuid);
+            association.remove(uuid);
+            messagesList.remove(idx);
+        }
+
+        public void addMessage(Message message, Long time)
+        {
+            Pair data = new Pair(message, time);
+            messagesList.add(data);
+            int idx = messagesList.indexOf(data);
+            association.put(message.getUUID(), idx);
+        }
+
+        public int size() {return messagesList.size();}
+        public LinkedList getMessageList(){return messagesList;}
+        public void clear(){messagesLists.clear(); association.clear();}
+    }
+
     public final int MAX_MESSAGES_NUMBER = 1000;
     public final int TIMEOUT = 1000;
-    private DatagramPacket packet = new DatagramPacket(buf, buf.length);
     private String name;
     private int lossPersentage;
     private int port;
     private DatagramSocket socket;
-    private boolean isRoot;
     private SocketAddress parentAddress;
-    private SocketChannel parentSocketChannel;
-    private static final String MESSAGE = "hello";
+    private Vector<SocketAddress> childAdresses;
     private Scanner scanner = new Scanner(System.in);
-    private Map<SocketAddress, Vector<Pair<Message, Long>>> messagesLists = new HashMap<>();
     private Random randomGenerator = new Random();
+    private Map<SocketAddress, MessageList> messagesLists = new HashMap<>();
 
-
-    // i'm your son
-    // my end
-    // content message
-    // submit msg
-    // this is your new father
+    // i'm your son content number of packet +
+    // i'm not your child anymore content number of packet +
+    // content message content string and number of packet +
+    // submit msg number of packet +
+    // this is your new father socketAddress +
     //
 
     Message deserializeMessage(ByteBuffer buffer)
@@ -51,6 +71,25 @@ public class Program
         }
     }
 
+    byte[] serializeMessage(Message message)
+    {
+        try
+        {
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            ObjectOutputStream objectOutputStream = new ObjectOutputStream(outputStream);
+            objectOutputStream.writeObject(message);
+            objectOutputStream.flush();
+            objectOutputStream.close();
+            return outputStream.toByteArray();
+        }
+        catch (IOException e)
+        {
+            System.err.println("Can't serialize a message");
+            System.exit(1);
+            return null;
+        }
+    }
+
     public void run() throws UnknownHostException, IOException
     {
         socket = new DatagramSocket(port);
@@ -58,58 +97,114 @@ public class Program
 
         if (parentAddress != null)
         {
-            sendMessageImYourSon(parentAddress);
+            Message message = new ImYourChildMessage();
+            messagesLists.put(parentAddress, new MessageList());
+            messagesLists.get(parentAddress).addMessage(message, 0L);
         }
-
 
         while (true)
         {
-            if (scanner.hasNext())
+            if (System.in.available() > 0)
             {
                 String userMessage = scanner.next();
                 if(userMessage == "exit")
                 {
+                    if(parentAddress != null)
+                    {
 
+                        Message message = new ImNotYourChildAnymoreMessage();
+                        messagesLists.get(parentAddress).clear();
+                        messagesLists.get(parentAddress).addMessage(message, 0L);
+
+                        for(SocketAddress childAddress : childAdresses)
+                        {
+                            Message msg = new YouHaveNewFatherMessage(parentAddress);
+                            messagesLists.get(childAddress).clear();
+                            messagesLists.get(childAddress).addMessage(msg, 0L);
+                        }
+                    }
+                    else
+                    {
+                        boolean isFirst = true;
+                        SocketAddress newParentAddress = null;
+                        Message msg;
+                        for(SocketAddress childAddress : childAdresses)
+                        {
+                            if(isFirst)
+                            {
+                                msg = new YouHaveNewFatherMessage(null);
+                                newParentAddress = childAddress;
+                            }
+                            else
+                            {
+                                msg = new YouHaveNewFatherMessage(newParentAddress);
+                            }
+                            messagesLists.get(childAddress).clear();
+                            messagesLists.get(childAddress).addMessage(msg, 0L);
+                        }
+                    }
+                    break;
                 }
-                Message message = new ContentMessage(userMessage);
-                for (Vector<Pair<Message, Long>> messagesList : messagesLists.values())
+                Message message = new ContentMessage(name + ": " + userMessage);
+                for (MessageList messagesList : messagesLists.values())
                 {
                     if (messagesList.size() == MAX_MESSAGES_NUMBER)
                     {
-                        messagesList.removeElementAt(0);
+                        messagesList.removeEldestOne();
                     }
-                    messagesList.add(new Pair<>(message, 0L));
+                    messagesList.addMessage(message, 0L);
                 }
             }
 
-            for (Map.Entry<SocketAddress, Vector<Pair<Message, Long>>>  entry : messagesLists.entrySet())
+            for (Map.Entry<SocketAddress, MessageList>  entry : messagesLists.entrySet())
             {
                 SocketAddress socketAddress = entry.getKey();
-                Vector<Pair<Message, Long>> messagesList = entry.getValue();
+                LinkedList<Pair<Message, Long>> messagesList = entry.getValue().getMessageList();
                 for (Pair<Message, Long> data : messagesList)
                 {
                     Message message = data.first;
                     Long lastSendTime = data.second;
-                    if (lastSendTime - System.currentTimeMillis() > 5)
+                    if (System.currentTimeMillis() - lastSendTime > 50)
                     {
-                        message.beSentTo(socketAddress);
+                        byte[] buffer = serializeMessage(message);
+                        DatagramPacket packet = new DatagramPacket(buffer, buffer.length, socketAddress);
+                        socket.send(packet);
                     }
                 }
             }
             try
             {
-                socket.receive(packet);
+                DatagramPacket recievedPacket = new DatagramPacket(new byte[1024], 1024);
+                socket.receive(recievedPacket);
                 if (randomGenerator.nextInt(100) >= lossPersentage)
                 {
-                    ByteBuffer buffer = ByteBuffer.wrap(packet.getData());
+                    ByteBuffer buffer = ByteBuffer.wrap(recievedPacket.getData());
                     Message message = deserializeMessage(buffer);
+                    message.setFrom(recievedPacket.getSocketAddress());
                     message.beProcessed();
                     message = new ConfirmMessage(message.getUUID());
-                    message.beSentTo(packet.getSocketAddress());
+                    messagesLists.get(recievedPacket.getSocketAddress()).addMessage(message, 0L);
                 }
             }
             catch (SocketTimeoutException e) {}
         }
+
+        boolean isReadyToExit = false;
+        while(!isReadyToExit)
+        {
+            if(parentAddress == null || messagesLists.get(parentAddress).size() == 0)
+            {
+                isReadyToExit = true;
+                for (SocketAddress childAddress : childAdresses)
+                {
+                    if(messagesLists.get(childAddress).size() != 0)
+                    {
+                        isReadyToExit = false;
+                    }
+                }
+            }
+        }
+
     }
 
     public static void main(String[] args) throws UnknownHostException, IOException
@@ -124,14 +219,10 @@ public class Program
             int parentPort = Integer.parseInt(args[4]);
             program.parentAddress = new InetSocketAddress(parentIP, parentPort);
         }
-        else
-        {
-            program.isRoot = true;
-        }
         program.run();
     }
 
-    private class Pair<F, S>
+    private class Pair<F, S>  implements Serializable
     {
         public F first;
         public S second;
@@ -142,5 +233,80 @@ public class Program
             this.second = second;
         }
     }
+
+
+    public static abstract class Message  implements Serializable
+    {
+        protected UUID uuid = UUID.randomUUID();
+        protected SocketAddress from;
+
+        public abstract void beProcessed();
+        public UUID getUUID() {return uuid;}
+        public void setFrom(SocketAddress from) {this.from = from;}
+    }
+
+
+    public  static class  ImYourChildMessage extends Message implements Serializable
+    {
+        private Map<SocketAddress, MessageList> messagesLists;
+        private SocketAddress childAddress;
+        ImYourChildMessage(Map<SocketAddress, MessageList> messagesLists, SocketAddress childAddress)
+        {
+            this.messagesLists = messagesLists;
+            this.childAddress = childAddress;
+        }
+        public void beProcessed()
+        {
+            System.out.println("i have a child!");
+            childAdresses.add(from);
+            messagesLists.put(from, new MessageList());
+        }
+    }
+
+    public  static class  ImNotYourChildAnymoreMessage extends Message implements Serializable
+    {
+        public void beProcessed()
+        {
+            childAdresses.remove(from);
+            messagesLists.remove(parentAddress);
+        }
+    }
+
+    public  static class  ContentMessage extends Message implements Serializable
+    {
+        private String message;
+        ContentMessage(String message){this.message = message;}
+        public void beProcessed() {System.out.println(message);}
+    }
+
+    public  static class  YouHaveNewFatherMessage extends Message implements Serializable
+    {
+        private SocketAddress newParentAddress;
+        YouHaveNewFatherMessage(SocketAddress newParentAddress) {this.newParentAddress = newParentAddress;}
+        public void beProcessed()
+        {
+            messagesLists.remove(parentAddress);
+            parentAddress = newParentAddress;
+
+            Message message = new ImYourChildMessage();
+            messagesLists.put(parentAddress, new MessageList());
+            messagesLists.get(parentAddress).addMessage(message, 0L);
+        }
+    }
+
+    public  static class  ConfirmMessage extends Message implements Serializable
+    {
+        private UUID uuidToConfirm;
+
+        ConfirmMessage(UUID uuidToConfirm) {this.uuidToConfirm = uuidToConfirm;}
+        public void beProcessed()
+        {
+            MessageList messagesList = messagesLists.get(from);
+            messagesList.removeMessageWithUUID(uuidToConfirm);
+        }
+    }
 }
+
+
+
 
